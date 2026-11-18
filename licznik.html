@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Licznik</title>
+
+    <script src="https://unpkg.com/react@16/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@16/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/babel-standalone@6.15.0/babel.min.js"></script>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        #container {
+            padding: 50px;
+            background-color: #FFF;
+        }
+        table {
+            margin-top: 20px;
+            border-collapse: collapse;
+        }
+        td, th {
+            border: 1px solid #444;
+            padding: 6px 12px;
+            text-align: center;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .info {
+            margin-top: 12px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+
+    <script type="text/babel">
+
+        class Counter extends React.Component {
+            render() {
+                const textStyle = {
+                    fontSize: 72,
+                    fontFamily: "sans-serif",
+                    color: "#333",
+                    fontWeight: "bold",
+                    marginBottom: 10
+                };
+                return <div style={textStyle}>{this.props.display}</div>;
+            }
+        }
+
+        class CounterParent extends React.Component {
+            constructor(props) {
+                super(props);
+
+                this.startTime = Date.now();
+
+                this.state = {
+                    count: 0,
+                    normalClicks: 0,
+                    shiftClicks: 0,
+                    clicksWithoutShift: 0,
+                    shiftAllowed: true,
+                    records: this.loadRecords()
+                };
+
+                this.increase = this.increase.bind(this);
+                this.reset = this.reset.bind(this);
+                this.clearRecords = this.clearRecords.bind(this);
+            }
+
+            loadRecords() {
+                const saved = JSON.parse(localStorage.getItem("records") || "[]");
+
+                return saved
+                    .map(record => {
+                        if (typeof record === "number") {
+                            return {
+                                score: record,
+                                date: "brak danych",
+                                elapsed: "brak danych"
+                            };
+                        }
+
+                        return record;
+                    })
+                    .filter(record => record && typeof record.score === "number")
+                    .sort((a, b) => b.score - a.score)
+                    .slice(0, 10);
+            }
+
+            getNormalLimit(value) {
+                const length = value.toString().length;
+                return Math.pow(10, length - 1);
+            }
+
+            getShiftLimit(value) {
+                return Math.max(1, this.getNormalLimit(value) / 10);
+            }
+
+            formatTime(milliseconds) {
+                const totalSeconds = Math.floor(milliseconds / 1000);
+                const minutes = Math.floor(totalSeconds / 60);
+                const seconds = totalSeconds % 60;
+                const hundredths = Math.floor((milliseconds % 1000) / 10);
+
+                return (
+                    String(minutes).padStart(2, "0") + ":" +
+                    String(seconds).padStart(2, "0") + "." +
+                    String(hundredths).padStart(2, "0")
+                );
+            }
+
+            saveRecordIfBroken(newScore, records) {
+                const bestScore = records.length > 0 ? records[0].score : 0;
+
+                if (newScore <= bestScore) {
+                    return records;
+                }
+
+                const newRecord = {
+                    score: newScore,
+                    date: new Date().toLocaleString("pl-PL"),
+                    elapsed: this.formatTime(Date.now() - this.startTime)
+                };
+
+                const updated = [...records, newRecord]
+                    .sort((a, b) => b.score - a.score)
+                    .slice(0, 10);
+
+                localStorage.setItem("records", JSON.stringify(updated));
+                return updated;
+            }
+
+            increase(e) {
+                let {
+                    count,
+                    normalClicks,
+                    shiftClicks,
+                    clicksWithoutShift,
+                    shiftAllowed,
+                    records
+                } = this.state;
+
+                let valueChanged = false;
+
+                if (e.shiftKey) {
+                    if (!shiftAllowed) {
+                        return;
+                    }
+
+                    if (count < 10) {
+                        count += 10;
+                        valueChanged = true;
+                        shiftClicks = 0;
+                        shiftAllowed = false;
+                        clicksWithoutShift = 0;
+                    } else {
+                        const shiftLimit = this.getShiftLimit(count);
+                        shiftClicks++;
+
+                        if (shiftClicks >= shiftLimit) {
+                            count += 1;
+                            valueChanged = true;
+                            shiftClicks = 0;
+                            shiftAllowed = false;
+                            clicksWithoutShift = 0;
+                        }
+                    }
+                } else {
+                    const normalLimit = this.getNormalLimit(count);
+
+                    normalClicks++;
+                    clicksWithoutShift++;
+
+                    if (normalClicks >= normalLimit) {
+                        count += 1;
+                        valueChanged = true;
+                        normalClicks = 0;
+                    }
+
+                    if (clicksWithoutShift >= 10) {
+                        shiftAllowed = true;
+                    }
+                }
+
+                if (valueChanged) {
+                    records = this.saveRecordIfBroken(count, records);
+                }
+
+                this.setState({
+                    count,
+                    normalClicks,
+                    shiftClicks,
+                    clicksWithoutShift,
+                    shiftAllowed,
+                    records
+                });
+            }
+
+            reset() {
+                this.startTime = Date.now();
+
+                this.setState({
+                    count: 0,
+                    normalClicks: 0,
+                    shiftClicks: 0,
+                    clicksWithoutShift: 0,
+                    shiftAllowed: true
+                });
+            }
+
+            clearRecords() {
+                localStorage.removeItem("records");
+                this.startTime = Date.now();
+
+                this.setState({
+                    count: 0,
+                    normalClicks: 0,
+                    shiftClicks: 0,
+                    clicksWithoutShift: 0,
+                    shiftAllowed: true,
+                    records: []
+                });
+            }
+
+            render() {
+                const shiftStatus = this.state.shiftAllowed ? "odblokowany" : "zablokowany";
+
+                const backgroundStyle = {
+                    padding: 50,
+                    backgroundColor: "#FFC53A",
+                    width: 360,
+                    borderRadius: 10,
+                    textAlign: "center"
+                };
+
+                const buttonStyle = {
+                    fontSize: "1.2em",
+                    width: 44,
+                    height: 44,
+                    fontFamily: "sans-serif",
+                    color: "#333",
+                    fontWeight: "bold",
+                    cursor: "pointer"
+                };
+
+                return (
+                    <div>
+                        <div style={backgroundStyle}>
+                            <Counter display={this.state.count}/>
+                            <button onClick={this.increase} style={buttonStyle}>+</button>
+
+                            <div className="info">
+                                <div>Shift: {shiftStatus}</div>
+                            </div>
+                        </div>
+
+                        <h3>
+                            Najlepsze wyniki
+                            <button
+                                onClick={this.clearRecords}
+                                style={{ marginLeft: 10, fontSize: "0.8em", padding: "4px 8px" }}
+                            >
+                                Usuń
+                            </button>
+                        </h3>
+
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Miejsce</th>
+                                    <th>Wynik</th>
+                                    <th>Data i czas wyniku</th>
+                                    <th>Czas pobicia rekordu</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {this.state.records.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="4">Brak rekordów</td>
+                                    </tr>
+                                ) : (
+                                    this.state.records.map((record, i) => (
+                                        <tr key={i}>
+                                            <td>{i + 1}</td>
+                                            <td>{record.score}</td>
+                                            <td>{record.date}</td>
+                                            <td>{record.elapsed}</td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                );
+            }
+        }
+
+        ReactDOM.render(
+            <CounterParent/>,
+            document.querySelector("#container")
+        );
+    </script>
+</body>
+</html>
